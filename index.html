@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>店铺定位器</title>
+    <!-- 引入Google Maps的API，使用用户提供的API密钥 -->
+    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAAI2NOMfcjxwI9zV7QuLlmksJPqC77-wc&libraries=places"></script>
+    <style>
+        /* 地图容器的样式 */
+        #map {
+            height: 80vh;
+            width: 100%;
+        }
+        /* 控制面板的样式 */
+        #controls {
+            margin: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+        input, button {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Mobile Phone Shop Locator</h1>
+    <!-- 输入地址和搜索按钮的区域 -->
+    <div id="controls">
+        <input type="text" id="address" placeholder="Enter an address...">
+        <button id="搜索">Search</button>
+    </div>
+    <!-- 地图展示的容器 -->
+    <div id="map"></div>
+
+    <script>
+        let map;
+        let service;
+        let infowindow;
+        let allResults = []; // 存储所有商店结果
+
+        // 初始化地图
+        function initMap() {
+            map = new google.maps.Map(document.getElementById("map"), {
+                center: { lat: 34.052235, lng: -118.243683 }, // 默认中心点为洛杉矶
+                zoom: 12,
+            });
+            infowindow = new google.maps.InfoWindow(); // 信息窗口实例化
+        }
+
+        // 搜索手机商店的主函数
+        function searchShops() {
+            const address = document.getElementById("address").value; // 获取输入框中的地址
+            const geocoder = new google.maps.Geocoder(); // 地理编码器实例化
+
+            // 将地址转换为经纬度
+            geocoder.geocode({ address: address }, (results, status) => {
+                if (status === "OK") {
+                    const location = results[0].geometry.location; // 获取地址的经纬度
+                    map.setCenter(location); // 设置地图的中心点
+
+                    // 动态生成多个搜索区域
+                    const searchCenters = generateSearchCenters({
+                        lat: location.lat(),
+                        lng: location.lng(),
+                    });
+
+                    // 遍历每个搜索中心点并调用 Google Places API
+                    searchCenters.forEach((center) => {
+                        const request = {
+                            location: center,
+                            radius: 5000, // 设置小搜索半径（5 公里）
+                            keyword: "mobile phone shop",
+                        };
+                        fetchPlaces(request); // 使用分页函数
+                    });
+                } else {
+                    alert("Geocode was not successful: " + status);
+                }
+            });
+        }
+
+        // 生成多个搜索中心点
+        function generateSearchCenters(center, gridSize = 3, step = 0.05) {
+            const centers = [];
+            const lat = center.lat;
+            const lng = center.lng;
+
+            for (let i = -Math.floor(gridSize / 2); i <= Math.floor(gridSize / 2); i++) {
+                for (let j = -Math.floor(gridSize / 2); j <= Math.floor(gridSize / 2); j++) {
+                    centers.push({ lat: lat + i * step, lng: lng + j * step });
+                }
+            }
+            return centers;
+        }
+
+        // 分页抓取商店的主函数
+        function fetchPlaces(request, nextPageToken = null) {
+            if (nextPageToken) request.pagetoken = nextPageToken; // 如果有分页 token，添加到请求
+
+            service = new google.maps.places.PlacesService(map); // 实例化Places服务
+
+            service.nearbySearch(request, (results, status, pagination) => {
+                if (status === google.maps.places.PlacesServiceStatus.OK) {
+                    results.forEach((place) => {
+                        // 去重：检查结果是否已存在
+                        if (!allResults.some((p) => p.place_id === place.place_id)) {
+                            allResults.push(place);
+                            createMarker(place); // 在地图上创建标记
+                        }
+                    });
+
+                    // 如果有下一页，继续请求
+                    if (pagination && pagination.hasNextPage) {
+                        setTimeout(() => {
+                            fetchPlaces(request, pagination.nextPageToken);
+                        }, 2000); // 延迟 2 秒
+                    }
+                }
+            });
+        }
+
+        // 创建地图标记
+        function createMarker(place) {
+            const marker = new google.maps.Marker({
+                map: map,
+                position: place.geometry.location, // 设置标记位置
+            });
+
+            // 显示详细信息
+            google.maps.event.addListener(marker, "click", () => {
+                infowindow.setContent(
+                    `<div><strong>${place.name}</strong><br>${place.vicinity}<br>Rating: ${place.rating || "N/A"} (${place.user_ratings_total || 0} reviews)</div>`
+                );
+                infowindow.open(map, marker);
+            });
+        }
+
+        // 搜索按钮绑定事件
+        document.getElementById("搜索").addEventListener("click", searchShops);
+
+        // 当页面加载时初始化地图
+        window.onload = initMap;
+    </script>
+</body>
+</html>
