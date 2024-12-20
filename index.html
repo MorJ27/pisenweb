@@ -24,11 +24,11 @@
     </style>
 </head>
 <body>
-    <h1>Mobile Phone Shop Locator</h1>
+    <h1>店铺定位器</h1>
     <!-- 输入地址和搜索按钮的区域 -->
     <div id="controls">
         <input type="text" id="address" placeholder="Enter an address...">
-        <button id="搜索">Search</button>
+        <button id="search">搜索</button>
     </div>
     <!-- 地图展示的容器 -->
     <div id="map"></div>
@@ -103,10 +103,13 @@
             service.nearbySearch(request, (results, status, pagination) => {
                 if (status === google.maps.places.PlacesServiceStatus.OK) {
                     results.forEach((place) => {
-                        // 去重：检查结果是否已存在
-                        if (!allResults.some((p) => p.place_id === place.place_id)) {
-                            allResults.push(place);
-                            createMarker(place); // 在地图上创建标记
+                        // 根据商铺名称和类型进行过滤
+                        if (filterPlace(place)) {
+                            // 去重：检查结果是否已存在
+                            if (!allResults.some((p) => p.place_id === place.place_id)) {
+                                allResults.push(place);
+                                createMarker(place); // 在地图上创建标记
+                            }
                         }
                     });
 
@@ -118,6 +121,23 @@
                     }
                 }
             });
+        }
+
+        // 过滤商铺的函数
+        function filterPlace(place) {
+            // 排除包含特定关键词的商铺名称
+            const excludedKeywords = ["authorized", "franchise", "apple", "samsung", "verizon", "at&t"];
+            if (excludedKeywords.some(keyword => place.name.toLowerCase().includes(keyword))) {
+                return false;
+            }
+
+            // 排除特定类型的商铺
+            const excludedTypes = ["corporate_office", "authorized_retailer"];
+            if (place.types && place.types.some(type => excludedTypes.includes(type))) {
+                return false;
+            }
+
+            return true; // 符合条件的商铺
         }
 
         // 创建地图标记
@@ -137,7 +157,7 @@
         }
 
         // 搜索按钮绑定事件
-        document.getElementById("搜索").addEventListener("click", searchShops);
+        document.getElementById("search").addEventListener("click", searchShops);
 
         // 当页面加载时初始化地图
         window.onload = initMap;
