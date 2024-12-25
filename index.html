@@ -25,24 +25,36 @@
       font-family: Arial, sans-serif;
     }
 
-    /* 头部标题稍微美化 */
     h1 {
       font-size: 1.2rem;
       margin: 8px;
       text-align: center;
     }
 
-    /* 顶部的控制区：用一个容器包裹，自动撑高 */
-    #controls {
+    /* 地图：让它通过 flex: 1 占据剩余空间，避免底部出现大量空白 */
+    #map {
+      flex: 1;
+      min-height: 300px;
+    }
+
+    /* === 新增或修改: 
+       我们把所有控件都放进一个“container”里，后面通过折叠展开来管理 
+    */
+    #controlsContainer {
+      background: #eee;
+    }
+
+    /* 控制区和路线区，原本的样式保持不变，放在 #controlsContainer 里 */
+    #controls, #routeControls {
       display: flex;
       flex-wrap: wrap; 
       align-items: center;
       justify-content: space-between;
       padding: 8px;
-      background: #eee;
     }
     #controls input,
-    #controls button {
+    #controls button,
+    #routeControls button {
       margin: 5px;
       padding: 6px;
       font-size: 14px;
@@ -56,35 +68,45 @@
       margin-right: 10px;
     }
 
-    /* 路线规划的控制面板，也在顶部 */
-    #routeControls {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      padding: 8px;
-      background: #eee;
+    /* === 新增或修改: 
+       在小屏幕 (max-width:600px) 默认隐藏这些控件，
+       只显示一个“Toggle”按钮来切换显示/隐藏
+    */
+    @media (max-width: 600px) {
+      #controlsContainer {
+        display: none; /* 默认隐藏容器 */
+      }
+      /* 当我们给它加上 .show 类时才显示 */
+      #controlsContainer.show {
+        display: block;
+      }
+
+      /* 可以再稍微调小按钮/字体之类，这里只是示例 */
+      #controlsContainer button, 
+      #controlsContainer input {
+        font-size: 12px;
+        padding: 4px;
+      }
+      #controlsContainer h1 {
+        font-size: 1rem;
+      }
     }
-    #routeControls button {
+
+    /* === 新增或修改: 
+       一个单独的“Toggle”按钮，
+       在小屏幕时显示，在大屏幕时隐藏 
+    */
+    #toggleBtn {
+      display: none; /* 大屏默认不显示 */
       margin: 5px;
       padding: 6px;
       font-size: 14px;
     }
-
-    /* 地图：让它通过 flex: 1 占据剩余空间，避免底部出现大量空白 */
-    #map {
-      flex: 1;
-      min-height: 300px; /* 给个最小高度，防止在极小屏幕下挤没了 */
-    }
-
-    /* 对小屏幕再做些适配，可根据需要调整 */
     @media (max-width: 600px) {
-      h1 {
-        font-size: 1rem;
-      }
-      #controls,
-      #routeControls {
-        flex-direction: column;
-        align-items: flex-start; /* 或 center，根据需要 */
+      #toggleBtn {
+        display: inline-block; /* 小屏显示 */
+        background: #ccc;
+        border: 1px solid #999;
       }
     }
   </style>
@@ -93,29 +115,33 @@
 <body>
   <h1>Mobile Phone Shop Locator</h1>
 
-  <!-- 输入地址和搜索按钮的区域 -->
-  <div id="controls">
-    <input type="text" id="address" placeholder="Enter an address..." />
-    <input type="text" id="keywords" placeholder="Enter keywords..." />
-    <button id="search">Search</button>
-    <button id="searchArea">Search in this Area</button>
-    <div id="filters">
-      <label>
-        Min Rating (0-5):
-        <input type="number" id="minRating" value="0" min="0" max="5" step="0.1" />
-      </label>
-      <label>
-        Min Reviews (e.g., 0-100):
-        <input type="number" id="minReviews" value="0" min="0" />
-      </label>
-    </div>
-  </div>
+  <!-- === 新增或修改: 一个“Toggle Controls”按钮，默认在小屏幕才出现 -->
+  <button id="toggleBtn">Toggle Controls</button>
 
-  <!-- 路线规划的控制面板 -->
-  <div id="routeControls">
-    <button id="showRoute">Show Route</button>
-    <button id="clearRoute">Clear Route</button>
-    <button id="openExternalNav">Open in Google Maps</button>
+  <!-- === 新增或修改: 用一个容器装“搜索控件 + 路线控件” -->
+  <div id="controlsContainer">
+    <div id="controls">
+      <input type="text" id="address" placeholder="Enter an address..." />
+      <input type="text" id="keywords" placeholder="Enter keywords..." />
+      <button id="search">Search</button>
+      <button id="searchArea">Search in this Area</button>
+      <div id="filters">
+        <label>
+          Min Rating (0-5):
+          <input type="number" id="minRating" value="0" min="0" max="5" step="0.1" />
+        </label>
+        <label>
+          Min Reviews (e.g., 0-100):
+          <input type="number" id="minReviews" value="0" min="0" />
+        </label>
+      </div>
+    </div>
+
+    <div id="routeControls">
+      <button id="showRoute">Show Route</button>
+      <button id="clearRoute">Clear Route</button>
+      <button id="openExternalNav">Open in Google Maps</button>
+    </div>
   </div>
 
   <!-- 地图展示的容器 -->
@@ -400,7 +426,6 @@
         return;
       }
 
-      // 每次都再次调用 getCurrentPosition
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -416,12 +441,10 @@
           }
         );
       } else {
-        // 浏览器不支持
         handleNoGeolocation();
       }
     }
 
-    // 用户拒绝或不支持定位时
     function handleNoGeolocation() {
       const fallbackAddress = prompt(
         "Could not get your location. Please enter an address to use as the route origin:"
@@ -535,6 +558,13 @@
 
       window.open(url, "_blank");
     }
+
+    // === 新增或修改: “Toggle Controls” 按钮逻辑
+    document.getElementById("toggleBtn").addEventListener("click", () => {
+      const container = document.getElementById("controlsContainer");
+      // 如果已经有 show 类，则移除；没有则添加
+      container.classList.toggle("show");
+    });
 
     // 绑定事件
     document.getElementById("search").addEventListener("click", searchShops);
