@@ -1,249 +1,549 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google Map Mobile Shop Locator</title>
-    <!-- 引入Google Maps的API，使用用户提供的API密钥 -->
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAAI2NOMfcjxwI9zV7QuLlmksJPqC77-wc&libraries=places"></script>
-    <style>
-        /* 地图容器的样式 */
-        #map {
-            height: 85vh; /* 提高地图区域高度 */
-            width: 100%;
-        }
-        /* 控制面板的样式 */
-        #controls {
-            margin: 5px;
-            display: flex;
-            flex-wrap: wrap; /* 让控件在小屏幕下自动换行 */
-            align-items: center;
-            justify-content: space-between;
-        }
-        input, button {
-            margin: 5px;
-            padding: 5px;
-            font-size: 14px; /* 缩小字体 */
-            height: 30px; /* 减少高度 */
-        }
-        #filters {
-            display: flex;
-            align-items: center;
-        }
-        label {
-            margin-right: 10px;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <!-- 让移动端使用设备宽度，并在初始时不进行额外缩放 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Google Map Mobile Shop Locator</title>
+  <!-- 
+    使用官方推荐的 async defer + callback=initMap
+    把 YOUR_API_KEY 换成你自己的有效 API Key
+  -->
+  <script
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAAI2NOMfcjxwI9zV7QuLlmksJPqC77-wc&callback=initMap&libraries=places"
+    async
+    defer
+  ></script>
+  <style>
+    /* 让页面和 body 高度撑满视口，使用 Flex 布局 */
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      font-family: Arial, sans-serif;
+    }
+
+    /* 头部标题稍微美化 */
+    h1 {
+      font-size: 1.2rem;
+      margin: 8px;
+      text-align: center;
+    }
+
+    /* 顶部的控制区：用一个容器包裹，自动撑高 */
+    #controls {
+      display: flex;
+      flex-wrap: wrap; 
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px;
+      background: #eee;
+    }
+    #controls input,
+    #controls button {
+      margin: 5px;
+      padding: 6px;
+      font-size: 14px;
+    }
+    #filters {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    #filters label {
+      margin-right: 10px;
+    }
+
+    /* 路线规划的控制面板，也在顶部 */
+    #routeControls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 8px;
+      background: #eee;
+    }
+    #routeControls button {
+      margin: 5px;
+      padding: 6px;
+      font-size: 14px;
+    }
+
+    /* 地图：让它通过 flex: 1 占据剩余空间，避免底部出现大量空白 */
+    #map {
+      flex: 1;
+      min-height: 300px; /* 给个最小高度，防止在极小屏幕下挤没了 */
+    }
+
+    /* 对小屏幕再做些适配，可根据需要调整 */
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 1rem;
+      }
+      #controls,
+      #routeControls {
+        flex-direction: column;
+        align-items: flex-start; /* 或 center，根据需要 */
+      }
+    }
+  </style>
 </head>
+
 <body>
-    <h1>Mobile Phone Shop Locator</h1>
-    <!-- 输入地址和搜索按钮的区域 -->
-    <div id="controls">
-        <input type="text" id="address" placeholder="Enter an address...">
-        <input type="text" id="keywords" placeholder="Enter keywords separated by commas...">
-        <button id="search">Search</button>
-        <button id="searchArea">Search in this Area</button>
-        <div id="filters">
-            <label>
-                Min Rating (0-5):
-                <input type="number" id="minRating" value="0" min="0" max="5" step="0.1">
-            </label>
-            <label>
-                Min Reviews (e.g., 0-100):
-                <input type="number" id="minReviews" value="0" min="0">
-            </label>
-        </div>
+  <h1>Mobile Phone Shop Locator</h1>
+
+  <!-- 输入地址和搜索按钮的区域 -->
+  <div id="controls">
+    <input type="text" id="address" placeholder="Enter an address..." />
+    <input type="text" id="keywords" placeholder="Enter keywords..." />
+    <button id="search">Search</button>
+    <button id="searchArea">Search in this Area</button>
+    <div id="filters">
+      <label>
+        Min Rating (0-5):
+        <input type="number" id="minRating" value="0" min="0" max="5" step="0.1" />
+      </label>
+      <label>
+        Min Reviews (e.g., 0-100):
+        <input type="number" id="minReviews" value="0" min="0" />
+      </label>
     </div>
-    <!-- 地图展示的容器 -->
-    <div id="map"></div>
+  </div>
 
-    <script>
-        let map;
-        let service;
-        let infowindow;
-        let allResults = []; // 存储所有商店结果
-        let unsuitablePlaces = []; // 用户标记为不适合的商店
+  <!-- 路线规划的控制面板 -->
+  <div id="routeControls">
+    <button id="showRoute">Show Route</button>
+    <button id="clearRoute">Clear Route</button>
+    <button id="openExternalNav">Open in Google Maps</button>
+  </div>
 
-        // 初始化地图
-        function initMap() {
-            map = new google.maps.Map(document.getElementById("map"), {
-                center: { lat: 34.052235, lng: -118.243683 }, // 默认中心点为洛杉矶
-                zoom: 12,
-            });
-            infowindow = new google.maps.InfoWindow(); // 信息窗口实例化
-        }
+  <!-- 地图展示的容器 -->
+  <div id="map"></div>
 
-        // 搜索手机商店的主函数
-        function searchShops() {
-            const address = document.getElementById("address").value; // 获取输入框中的地址
-            const userKeywords = document.getElementById("keywords").value; // 获取用户输入的关键词
-            const keywords = userKeywords ? userKeywords.split(",").map(k => k.trim()) : ["mobile phone shop"]; // 如果用户未输入关键词，则使用默认值
+  <script>
+    let map;
+    let service;
+    let infowindow;
+    let allResults = []; // 存储所有商店结果
+    let unsuitablePlaces = []; // 用户标记为不适合的商店
 
-            // 检查用户输入的关键词是否包含屏蔽词
-            const excludedKeywords = [
-                "authorized", "franchise", "apple", "samsung", "verizon", 
-                "at&t", "t-mobile", "boost mobile", "cricket wireless", 
-                "metro by t-mobile"
-            ];
-            const containsExcludedKeyword = keywords.some(keyword => excludedKeywords.includes(keyword.toLowerCase()));
+    // 用户选取的商铺，用于多点路线
+    let selectedRoutePlaces = [];
 
-            const geocoder = new google.maps.Geocoder(); // 地理编码器实例化
+    // Google Directions
+    let directionsService;
+    let directionsRenderer;
 
-            // 将地址转换为经纬度
-            geocoder.geocode({ address: address }, (results, status) => {
-                if (status === "OK") {
-                    const location = results[0].geometry.location; // 获取地址的经纬度
-                    map.setCenter(location); // 设置地图的中心点
+    // 用于记录路线的起点、途经点、终点（都是经纬度）
+    let lastOrigin = null;
+    let lastWaypoints = [];
+    let lastDestination = null;
 
-                    // 动态生成多个搜索区域
-                    const searchCenters = generateSearchCenters({
-                        lat: location.lat(),
-                        lng: location.lng(),
-                    });
+    // 1. 地图初始化
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 34.052235, lng: -118.243683 }, // 默认洛杉矶
+        zoom: 12,
+      });
+      infowindow = new google.maps.InfoWindow();
+      directionsService = new google.maps.DirectionsService();
+      directionsRenderer = new google.maps.DirectionsRenderer();
+      directionsRenderer.setMap(map);
+    }
 
-                    // 遍历每个搜索中心点和关键词
-                    searchCenters.forEach((center) => {
-                        keywords.forEach((keyword) => {
-                            const request = {
-                                location: center,
-                                radius: 5000, // 设置小搜索半径（5 公里）
-                                keyword: keyword,
-                            };
-                            fetchPlaces(request, !containsExcludedKeyword); // 如果包含屏蔽词，则不启用过滤
-                        });
-                    });
-                } else {
-                    alert("Geocode was not successful: " + status);
-                }
-            });
-        }
+    // 2. 搜索手机商店
+    function searchShops() {
+      const address = document.getElementById("address").value;
+      const userKeywords = document.getElementById("keywords").value;
+      const keywords = userKeywords
+        ? userKeywords.split(",").map((k) => k.trim())
+        : ["mobile phone shop"];
 
-        // 在当前地图区域搜索
-        function searchInArea() {
-            const bounds = map.getBounds();
-            const center = bounds.getCenter();
-            const request = {
+      // 屏蔽词
+      const excludedKeywords = [
+        "authorized",
+        "franchise",
+        "apple",
+        "samsung",
+        "verizon",
+        "at&t",
+        "t-mobile",
+        "boost mobile",
+        "cricket wireless",
+        "metro by t-mobile",
+      ];
+      const containsExcludedKeyword = keywords.some((keyword) =>
+        excludedKeywords.includes(keyword.toLowerCase())
+      );
+
+      const geocoder = new google.maps.Geocoder();
+      geocoder.geocode({ address: address }, (results, status) => {
+        if (status === "OK") {
+          const location = results[0].geometry.location;
+          map.setCenter(location);
+
+          // 动态生成多个搜索区域
+          const searchCenters = generateSearchCenters({
+            lat: location.lat(),
+            lng: location.lng(),
+          });
+
+          searchCenters.forEach((center) => {
+            keywords.forEach((keyword) => {
+              const request = {
                 location: center,
-                radius: 5000, // 设置搜索半径为5公里
-                keyword: document.getElementById("keywords").value || "mobile phone shop",
+                radius: 5000,
+                keyword: keyword,
+              };
+              // 若包含屏蔽词，则不启用过滤
+              fetchPlaces(request, !containsExcludedKeyword);
+            });
+          });
+        } else {
+          alert("Geocode was not successful: " + status);
+        }
+      });
+    }
+
+    // 3. 在当前地图区域搜索
+    function searchInArea() {
+      const bounds = map.getBounds();
+      const center = bounds.getCenter();
+      const request = {
+        location: center,
+        radius: 5000,
+        keyword: document.getElementById("keywords").value || "mobile phone shop",
+      };
+      fetchPlaces(request, true);
+    }
+
+    // 动态生成多个搜索中心点 (类似小范围网格)
+    function generateSearchCenters(center, gridSize = 3, step = 0.05) {
+      const centers = [];
+      const lat = center.lat;
+      const lng = center.lng;
+      for (let i = -Math.floor(gridSize / 2); i <= Math.floor(gridSize / 2); i++) {
+        for (let j = -Math.floor(gridSize / 2); j <= Math.floor(gridSize / 2); j++) {
+          centers.push({ lat: lat + i * step, lng: lng + j * step });
+        }
+      }
+      return centers;
+    }
+
+    // 4. 获取附近商铺
+    function fetchPlaces(request, useFilter, nextPageToken = null) {
+      if (nextPageToken) request.pagetoken = nextPageToken;
+      service = new google.maps.places.PlacesService(map);
+
+      service.nearbySearch(request, (results, status, pagination) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK) {
+          results.forEach((place) => {
+            if (useFilter ? filterPlace(place) : true) {
+              // 去重
+              if (!allResults.some((p) => p.place_id === place.place_id)) {
+                allResults.push(place);
+                createMarker(place);
+              }
+            }
+          });
+
+          if (pagination && pagination.hasNextPage) {
+            setTimeout(() => {
+              fetchPlaces(request, useFilter, pagination.nextPageToken);
+            }, 2000);
+          }
+        }
+      });
+    }
+
+    // 5. 过滤商铺
+    function filterPlace(place) {
+      const minRating = parseFloat(document.getElementById("minRating").value) || 0;
+      const minReviews = parseInt(document.getElementById("minReviews").value) || 0;
+
+      if (unsuitablePlaces.includes(place.place_id)) return false;
+
+      const excludedKeywords = [
+        "authorized",
+        "franchise",
+        "apple",
+        "samsung",
+        "verizon",
+        "at&t",
+        "t-mobile",
+        "boost mobile",
+        "cricket wireless",
+        "metro by t-mobile",
+      ];
+      if (
+        excludedKeywords.some((keyword) =>
+          place.name.toLowerCase().includes(keyword.toLowerCase())
+        )
+      ) {
+        return false;
+      }
+
+      const excludedTypes = ["corporate_office", "authorized_retailer"];
+      if (place.types && place.types.some((type) => excludedTypes.includes(type))) {
+        return false;
+      }
+
+      if ((place.rating || 0) < minRating || (place.user_ratings_total || 0) < minReviews) {
+        return false;
+      }
+
+      return true;
+    }
+
+    // 6. 标记不适合
+    function markAsUnsuitable(placeId) {
+      if (!unsuitablePlaces.includes(placeId)) {
+        unsuitablePlaces.push(placeId);
+        alert("Place marked as unsuitable!");
+      }
+    }
+
+    // 7. 加载商铺详情（电话、营业时间、图片等）
+    //    这里使用 lat,lng 拼接查看链接，以免 PlaceID 出错
+    function loadPlaceDetails(place, marker) {
+      const detailService = new google.maps.places.PlacesService(map);
+      detailService.getDetails({ placeId: place.place_id }, (details, status) => {
+        if (status === google.maps.places.PlacesServiceStatus.OK && details) {
+          const phone = details.formatted_phone_number || "N/A";
+          const openingHours = details.opening_hours
+            ? details.opening_hours.weekday_text.join("<br>")
+            : "No hours available";
+          const photos = details.photos
+            ? details.photos
+                .slice(0, 3)
+                .map(
+                  (photo) =>
+                    `<img src="${photo.getUrl({ maxWidth: 100 })}" style="width:100px;">`
+                )
+                .join("")
+            : "No photos";
+
+          // 用经纬度拼接
+          const lat = details.geometry.location.lat();
+          const lng = details.geometry.location.lng();
+          const googleMapsLink = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+          infowindow.setContent(`
+            <div>
+              <strong>${place.name}</strong><br>
+              ${place.vicinity}<br>
+              Rating: ${place.rating || "N/A"} (${place.user_ratings_total || 0} reviews)<br>
+              <hr>
+              <p><strong>Phone:</strong> ${phone}</p>
+              <p><strong>Opening Hours:</strong><br>${openingHours}</p>
+              <p><strong>Photos:</strong><br>${photos}</p>
+              <hr>
+              <!-- "View on Google Maps" 改用经纬度链接 -->
+              <button onclick="window.open('${googleMapsLink}', '_blank')">
+                View on Google Maps
+              </button>
+              <!-- 不适合标记 -->
+              <button onclick="markAsUnsuitable('${place.place_id}')">Mark as Unsuitable</button>
+              <!-- 将此地点加入路线 -->
+              <button onclick="addToRoute('${place.place_id}')">Add to Route</button>
+            </div>
+          `);
+          infowindow.open(map, marker);
+        } else {
+          infowindow.setContent(`
+            <div>
+              <strong>${place.name}</strong><br>
+              ${place.vicinity}<br>
+              Rating: ${place.rating || "N/A"} (${place.user_ratings_total || 0} reviews)<br>
+              <button onclick="markAsUnsuitable('${place.place_id}')">Mark as Unsuitable</button>
+            </div>
+          `);
+          infowindow.open(map, marker);
+        }
+      });
+    }
+
+    // 8. 创建地图标记
+    function createMarker(place) {
+      const markerIcon = place.types.includes("electronics_store")
+        ? "https://maps.google.com/mapfiles/ms/icons/green-dot.png"
+        : "https://maps.google.com/mapfiles/ms/icons/red-dot.png";
+
+      const marker = new google.maps.Marker({
+        map: map,
+        position: place.geometry.location,
+        icon: markerIcon,
+      });
+
+      google.maps.event.addListener(marker, "click", () => {
+        loadPlaceDetails(place, marker);
+      });
+    }
+
+    // 9. 将地点添加到路线
+    function addToRoute(placeId) {
+      const place = allResults.find((p) => p.place_id === placeId);
+      if (!place) return;
+      if (!selectedRoutePlaces.includes(place)) {
+        selectedRoutePlaces.push(place);
+        alert(`${place.name} added to route!`);
+      } else {
+        alert(`${place.name} is already in the route!`);
+      }
+    }
+
+    // 10. 显示路线（每次点击都再次尝试获取定位）
+    function showRoute() {
+      if (selectedRoutePlaces.length === 0) {
+        alert("Please select at least 1 place for route planning.");
+        return;
+      }
+
+      // 每次都再次调用 getCurrentPosition
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const userLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
             };
-            fetchPlaces(request, true);
-        }
+            planRoute(userLocation);
+          },
+          (error) => {
+            // 如果拒绝则让用户输入地址
+            handleNoGeolocation();
+          }
+        );
+      } else {
+        // 浏览器不支持
+        handleNoGeolocation();
+      }
+    }
 
-        // 生成多个搜索中心点
-        function generateSearchCenters(center, gridSize = 3, step = 0.05) {
-            const centers = [];
-            const lat = center.lat;
-            const lng = center.lng;
+    // 用户拒绝或不支持定位时
+    function handleNoGeolocation() {
+      const fallbackAddress = prompt(
+        "Could not get your location. Please enter an address to use as the route origin:"
+      );
+      if (fallbackAddress) {
+        const geocoder = new google.maps.Geocoder();
+        geocoder.geocode({ address: fallbackAddress }, (results, status) => {
+          if (status === "OK") {
+            const fallbackLocation = results[0].geometry.location;
+            planRoute(fallbackLocation);
+          } else {
+            alert("Failed to geocode address: " + status);
+          }
+        });
+      }
+    }
 
-            for (let i = -Math.floor(gridSize / 2); i <= Math.floor(gridSize / 2); i++) {
-                for (let j = -Math.floor(gridSize / 2); j <= Math.floor(gridSize / 2); j++) {
-                    centers.push({ lat: lat + i * step, lng: lng + j * step });
-                }
-            }
-            return centers;
-        }
+    // 11. 路线规划 (使用 lat,lng)
+    function planRoute(originLocation) {
+      if (selectedRoutePlaces.length === 1) {
+        const destination = selectedRoutePlaces[0].geometry.location;
+        const request = {
+          origin: originLocation,
+          destination,
+          travelMode: google.maps.TravelMode.DRIVING,
+        };
+        directionsService.route(request, (result, status) => {
+          if (status === google.maps.DirectionsStatus.OK) {
+            directionsRenderer.setDirections(result);
+            lastOrigin = originLocation;
+            lastWaypoints = [];
+            lastDestination = destination;
+          } else {
+            alert("Route request failed due to " + status);
+          }
+        });
+      } else {
+        const destination =
+          selectedRoutePlaces[selectedRoutePlaces.length - 1].geometry.location;
+        const waypoints = selectedRoutePlaces.slice(0, -1).map((place) => ({
+          location: place.geometry.location,
+          stopover: true,
+        }));
 
-        // 分页抓取商店的主函数
-        function fetchPlaces(request, useFilter, nextPageToken = null) {
-            if (nextPageToken) request.pagetoken = nextPageToken; // 如果有分页 token，添加到请求
+        const request = {
+          origin: originLocation,
+          destination,
+          waypoints,
+          optimizeWaypoints: true,
+          travelMode: google.maps.TravelMode.DRIVING,
+        };
 
-            service = new google.maps.places.PlacesService(map); // 实例化Places服务
+        directionsService.route(request, (result, status) => {
+          if (status === google.maps.DirectionsStatus.OK) {
+            directionsRenderer.setDirections(result);
+            lastOrigin = originLocation;
+            lastWaypoints = waypoints.map((wp) => wp.location);
+            lastDestination = destination;
+          } else {
+            alert("Route request failed due to " + status);
+          }
+        });
+      }
+    }
 
-            service.nearbySearch(request, (results, status, pagination) => {
-                if (status === google.maps.places.PlacesServiceStatus.OK) {
-                    results.forEach((place) => {
-                        // 根据商铺名称和类型进行过滤
-                        if (useFilter ? filterPlace(place) : true) {
-                            // 去重：检查结果是否已存在
-                            if (!allResults.some((p) => p.place_id === place.place_id)) {
-                                allResults.push(place);
-                                createMarker(place); // 在地图上创建标记
-                            }
-                        }
-                    });
+    // 12. 清空路线
+    function clearRoute() {
+      selectedRoutePlaces = [];
+      directionsRenderer.set("directions", null);
+      alert("Route cleared!");
+      lastOrigin = null;
+      lastWaypoints = [];
+      lastDestination = null;
+    }
 
-                    // 如果有下一页，继续请求
-                    if (pagination && pagination.hasNextPage) {
-                        setTimeout(() => {
-                            fetchPlaces(request, useFilter, pagination.nextPageToken);
-                        }, 2000); // 延迟 2 秒
-                    }
-                }
-            });
-        }
+    // 13. 打开谷歌地图进行多点导航
+    function openExternalNav() {
+      if (!lastOrigin || !lastDestination) {
+        alert("No route data available. Please click 'Show Route' first.");
+        return;
+      }
 
-        // 过滤商铺的函数
-        function filterPlace(place) {
-            const minRating = parseFloat(document.getElementById("minRating").value) || 0;
-            const minReviews = parseInt(document.getElementById("minReviews").value) || 0;
+      const baseUrl = "https://www.google.com/maps/dir/?api=1";
 
-            if (unsuitablePlaces.includes(place.place_id)) {
-                return false; // 排除被用户标记的商店
-            }
+      const originLat = typeof lastOrigin.lat === "function" ? lastOrigin.lat() : lastOrigin.lat;
+      const originLng = typeof lastOrigin.lng === "function" ? lastOrigin.lng() : lastOrigin.lng;
 
-            // 排除包含特定关键词的商铺名称
-            const excludedKeywords = [
-                "authorized", "franchise", "apple", "samsung", "verizon", 
-                "at&t", "t-mobile", "boost mobile", "cricket wireless", 
-                "metro by t-mobile"
-            ];
-            if (excludedKeywords.some(keyword => place.name.toLowerCase().includes(keyword.toLowerCase()))) {
-                return false;
-            }
+      const destLat =
+        typeof lastDestination.lat === "function" ? lastDestination.lat() : lastDestination.lat;
+      const destLng =
+        typeof lastDestination.lng === "function" ? lastDestination.lng() : lastDestination.lng;
 
-            // 排除特定类型的商铺
-            const excludedTypes = ["corporate_office", "authorized_retailer"];
-            if (place.types && place.types.some(type => excludedTypes.includes(type))) {
-                return false;
-            }
+      const originParam = `origin=${encodeURIComponent(`${originLat},${originLng}`)}`;
+      const destParam = `destination=${encodeURIComponent(`${destLat},${destLng}`)}`;
 
-            // 根据用户设置的评分和评论数过滤
-            if ((place.rating || 0) < minRating || (place.user_ratings_total || 0) < minReviews) {
-                return false;
-            }
+      let waypointsParam = "";
+      if (lastWaypoints && lastWaypoints.length > 0) {
+        const waypointsStr = lastWaypoints
+          .map((loc) => {
+            const wlat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
+            const wlng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+            return `${wlat},${wlng}`;
+          })
+          .join("|");
+        waypointsParam = `waypoints=${encodeURIComponent(waypointsStr)}`;
+      }
 
-            return true; // 符合条件的商铺
-        }
+      const url = `${baseUrl}&${originParam}&${destParam}${
+        waypointsParam ? "&" + waypointsParam : ""
+      }&travelmode=driving`;
 
-        // 标记商店为不适合
-        function markAsUnsuitable(placeId) {
-            if (!unsuitablePlaces.includes(placeId)) {
-                unsuitablePlaces.push(placeId);
-                alert("Place marked as unsuitable!");
-            }
-        }
+      window.open(url, "_blank");
+    }
 
-        // 创建地图标记
-        function createMarker(place) {
-            const markerIcon = place.types.includes('electronics_store') ? 'https://maps.google.com/mapfiles/ms/icons/green-dot.png' : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png';
-
-            const marker = new google.maps.Marker({
-                map: map,
-                position: place.geometry.location, // 设置标记位置
-                icon: markerIcon, // 根据类型设置图标
-            });
-
-            // 显示详细信息
-            google.maps.event.addListener(marker, "click", () => {
-                infowindow.setContent(
-                    `<div>
-                        <strong>${place.name}</strong><br>
-                        ${place.vicinity}<br>
-                        Rating: ${place.rating || "N/A"} (${place.user_ratings_total || 0} reviews)<br>
-                        <button onclick="markAsUnsuitable('${place.place_id}')">Mark as Unsuitable</button>
-                    </div>`
-                );
-                infowindow.open(map, marker);
-            });
-        }
-
-        // 搜索按钮绑定事件
-        document.getElementById("search").addEventListener("click", searchShops);
-        document.getElementById("searchArea").addEventListener("click", searchInArea);
-
-        // 当页面加载时初始化地图
-        window.onload = initMap;
-    </script>
+    // 绑定事件
+    document.getElementById("search").addEventListener("click", searchShops);
+    document.getElementById("searchArea").addEventListener("click", searchInArea);
+    document.getElementById("showRoute").addEventListener("click", showRoute);
+    document.getElementById("clearRoute").addEventListener("click", clearRoute);
+    document
+      .getElementById("openExternalNav")
+      .addEventListener("click", openExternalNav);
+  </script>
 </body>
 </html>
